@@ -409,6 +409,7 @@ p2 <-   problem(pu1, zones("zone_1" = zn1, "zone_2" = zn2,
 s2 <- solve(p2, force=TRUE)
 setMinMax(s2)
 plot(category_layer(s2), main="BII red")
+pu<- cellStats(s2, "sum") 
 
 # writeRaster(category_layer(s1), filename=here("output", "global.tif"), options="INTERLEAVE=BAND", overwrite=TRUE)
 # writeRaster(category_layer(s2), filename=here("output", "BII.tif"), options="INTERLEAVE=BAND", overwrite=TRUE)
@@ -418,19 +419,34 @@ plot(category_layer(s2), main="BII red")
 # P 25 R 5 M 10
 #xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  
 names(zn1)
+##Add weights to make feature representation more even
 w1 <- matrix(0, ncol = nlayers(pu1), nrow = nlayers(zn1))                     
-w1[c(1,2,4,5,6,7,9),] <- 100
+w1[c(1,2,4,5,6,7,9),] <- 10
+w1[c(8),2] <- 10
+w1[c(3),3] <- 10
+
+#Global small budget: Uncomment add_feature_weight
 
 p1_glob <- problem(pu1, zones("zone_1" = zn1, "zone_2" = zn2, 
                          "zone_3" = zn3,"zone_4" = zn4,
                          feature_names = names(zn1))) %>%
   add_max_utility_objective(c(count_tar(25), count_tar(5), count_tar(10), count_tar(65))) %>%
-  add_gurobi_solver(gap = 0, threads = n_cores)# %>%
-  #add_feature_weights(w3)
+  add_gurobi_solver(gap = 0, threads = n_cores) %>%
+  add_feature_weights(w1)
 
 s1_glob <- solve(p1_glob, force=TRUE)
+
+#Write results into table
 fr1_glob<-feature_representation(p1_glob,s1_glob)
 fr1_glob<-as.data.frame(fr1_glob)
+
+#If adjustment are necessary, uncomment this:
+# fr1_glob[c(10,17,18),4]<- fr1_glob[c(10,17,18),4]/2
+# fr1_glob[c(11:12,14,16),4]<- fr1_glob[c(11:12,14,16),4]/1.5
+# fr1_glob[c(19,20,26,27),4]<- fr1_glob[c(19,20,26,27),4]/0.5
+# fr1_glob[c(21:23),4]<-fr1_glob[c(21:23),4]/0.75
+fr1_glob
+
 
 write.csv(fr1_glob,"P25R5M10_global.csv")
 # setMinMax(s1_glob)
@@ -438,13 +454,15 @@ plot(category_layer(s1_glob), main="global")
 writeRaster(category_layer(s1_glob), filename=here("output", "P25R5M10_global.tif"), overwrite=TRUE)
 
 
+#Individual feature scenarios for low budget
+
 for(ii in 1:nlayers(zn1)){
 
   if(!names(zn1)[ii] == "Agriculture_Suitability"){
     w1 <- matrix(0, ncol = nlayers(pu1), nrow = nlayers(zn1))                     
     w1[ii,] <- 1
     
-    for(jj in 1:100){
+    for(jj in 1:200){
       p1_tmp <-   p1_glob %>% 
         add_max_utility_objective(c(count_tar(jj* 25 / ((nlayers(zn1) - 1) * 100)), 
                                     count_tar(jj * 5 / ((nlayers(zn1) - 1) * 100)), 
@@ -458,9 +476,9 @@ for(ii in 1:nlayers(zn1)){
       pu<- cellStats(s1_tmp, "sum") 
       
       writeRaster(category_layer(s1_tmp), 
-                  filename=here("output", paste0("P25R5M10_", names(zn1)[ii], sprintf("_%03d.tif", jj))), 
+                  filename=here("output_100", paste0("P25R5M10_", names(zn1)[ii], sprintf("_%03d.tif", jj))), 
                   overwrite=TRUE)
-      
+     #Write results into tables 
       if(jj == 1){
         feat_rep_rel <- data.frame(rbind(c(fr$relative_held)))
         planning_u <- data.frame(rbind(c(pu)))
@@ -482,44 +500,54 @@ for(ii in 1:nlayers(zn1)){
     print("Join layers")
     CR_table<- full_join(feat_rep_rel,planning_u,by="scenario")
     
+    #If adjustments are necessary, uncomment this:
+    # CR_table[,c(10,17,18)]<- CR_table[,c(10,17,18)]/2
+    # CR_table[,c(11:12,14,16)]<- CR_table[,c(11:12,14,16)]/1.5
+    # CR_table[,c(19,20,26,27)]<- CR_table[,c(19,20,26,27)]/0.5
+    # CR_table[,c(21:23)]<-CR_table[,c(21:23)]/0.75
+
     print("write csv")
     write.csv(CR_table,
-              paste0("P25R5M10_", names(zn1)[ii],".csv"))
+              paste0("/Users/luizmardeassisbarros/Desktop/costa_rica/CR_case_study-master/output_100/P25R5M10_", names(zn1)[ii],".csv"))
     
   }
 }
 
 
-
-
-
-# feat_rep_rel$scenario<- c(1:(nrow(feat_rep_rel)))
-# planning_u$scenario<- c(1:(nrow(planning_u)))
-# 
-# CR_Toff<- full_join(feat_rep_rel,feat_rep_abs,by="scenario")
-# CR_Toff<- full_join(CR_Toff,planning_u,by="scenario")
-# 
-# write.csv(CR_Toff,"CR_Toff.csv")
 #xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx                         
 # P 35 R 10 M 20
 #xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx    
 names(zn1)
 w2 <- matrix(0, ncol = nlayers(pu1), nrow = nlayers(zn1)) 
-w2[c(1,2,5,6,7,9),] <- 1000
+w2[c(1,2,5,9),1] <- 1
+w2[2,1] <- 10
+w2[c(1,2,3,4,9,8),2] <- 1
+w2[c(2,4),3]<-10
+w2[c(5,6,7,9),3]<-1
+w2[,4]<-1
 
+#Globbal large budget: Uncomment add_feature weights
 
 p2_glob <- problem(pu1, zones("zone_1" = zn1, "zone_2" = zn2, 
                               "zone_3" = zn3,"zone_4" = zn4,
                               feature_names = names(zn1))) %>%
   add_max_utility_objective(c(count_tar(35), count_tar(10), count_tar(20), count_tar(35))) %>%
   add_gurobi_solver(gap = 0, threads = n_cores)#%>%
-  #add_feature_weights(w3)
+  #add_feature_weights(w2)
 
 
 s2_glob <- solve(p2_glob, force=TRUE)
 
+#Write results into table
 fr2_glob<-feature_representation(p2_glob,s2_glob)
 fr2_glob<-as.data.frame(fr2_glob)
+
+#If adjustments are necessary, uncomment this:
+# fr2_glob[c(10,17,18),4]<- fr2_glob[c(10,17,18),4]/2
+# fr2_glob[c(11:12,14,16),4]<- fr2_glob[c(11:12,14,16),4]/1.5
+# fr2_glob[c(19,20,26,27),4]<- fr2_glob[c(19,20,26,27),4]/0.5
+# fr2_glob[c(21:23),4]<-fr2_glob[c(21:23),4]/0.75
+fr2_glob
 
 write.csv(fr2_glob,"P35R10M20_global.csv")
 # setMinMax(s2_glob)
@@ -527,13 +555,14 @@ plot(category_layer(s2_glob), main="global")
 writeRaster(category_layer(s2_glob), filename=here("output", "P35R10M20_global.tif"), overwrite=TRUE)
 
 
+#Individual feature scenarios for large budget
 for(ii in 1:nlayers(zn1)){
   
   if(!names(zn1)[ii] == "Agriculture_Suitability"){
     w1 <- matrix(0, ncol = nlayers(pu1), nrow = nlayers(zn1))                     
     w1[ii,] <- 1
     
-    for(jj in 1:100){
+    for(jj in 1:300){
       p2_tmp <-   p2_glob %>% 
         add_max_utility_objective(c(count_tar(jj * 35 / ((nlayers(zn1) - 1) * 100)), 
                                     count_tar(jj * 10 / ((nlayers(zn1) - 1) * 100)), 
@@ -541,15 +570,14 @@ for(ii in 1:nlayers(zn1)){
                                     100)) %>%
         add_feature_weights(w1)
       s2_tmp <- solve(p2_tmp, force=TRUE)
-      # setMinMax(s2_tmp)
-      # plot(category_layer(s2_tmp), main="BII red")
+
       fr <- feature_representation(p2_tmp,s2_tmp) 
       pu<- cellStats(s2_tmp, "sum") 
       
-      writeRaster(category_layer(s2_tmp), 
-                  filename=here("output", paste0("P35R10M20_", names(zn1)[ii], sprintf("_%03d.tif", jj))), 
+      writeRaster(category_layer(s2_tmp),
+                  filename=here("output_200", paste0("P35R10M20_", names(zn1)[ii], sprintf("_%03d.tif", jj))),
                   overwrite=TRUE)
-      
+   #Write results in to tables   
       if(jj == 1){
         feat_rep_rel <- data.frame(rbind(c(fr$relative_held)))
         planning_u <- data.frame(rbind(c(pu)))
@@ -570,224 +598,29 @@ for(ii in 1:nlayers(zn1)){
     
     print("Join layers")
     CR_table<- full_join(feat_rep_rel,planning_u,by="scenario")
+    #Uf adjustments are necessary, uncomment this
+    # CR_table[,c(10,17,18)]<- CR_table[,c(10,17,18)]/2
+    # CR_table[,c(11:12,14,16)]<- CR_table[,c(11:12,14,16)]/1.5
+    # CR_table[,c(19,20,26,27)]<- CR_table[,c(19,20,26,27)]/0.5
+    # CR_table[,c(21:23)]<-CR_table[,c(21:23)]/0.75
     
     print("write csv")
     write.csv(CR_table,
-              paste0("P35R10M20_", names(zn1)[ii],".csv"))
+              paste0("/Users/luizmardeassisbarros/Desktop/costa_rica/CR_case_study-master/output_200/P35R10M20_", names(zn1)[ii],".csv"))
   }
   
 }
-
-#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx                         
-# Trade-offs
-## High bugdet
-#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx 
-names(zn1)
-w3 <- matrix(0, ncol = nlayers(pu1), nrow = nlayers(zn1)) 
-w3[c(1,5,6,7,9),] <- 1
-w3[2,] <- 10
-
-p3_glob <- problem(pu1, zones("zone_1" = zn1, "zone_2" = zn2, 
-                              "zone_3" = zn3,"zone_4" = zn4,
-                              feature_names = names(zn1))) %>%
-  add_max_utility_objective(c(count_tar(35), count_tar(10), count_tar(20), count_tar(35))) %>%
-  add_gurobi_solver(gap = 0, threads = n_cores)#%>%
-  #add_feature_weights(w1)
-
-s3_glob <- solve(p3_glob, force=TRUE)
-
-fr3_glob<-feature_representation(p3_glob,s3_glob)
-fr3_glob<-as.data.frame(fr3_glob)
-# setMinMax(s3_glob)
-plot(category_layer(s3_glob), main="global")
-writeRaster(category_layer(s3_glob), filename=here("output_trade_off", "P35R10M20_global.tif"), overwrite=TRUE)
-
-
-# Biod
-w1 <- matrix(0, ncol = nlayers(pu1), nrow = nlayers(zn1))                     
-w1[c(1,8,9),] <- 1
-
-for(jj in 1:100){
-  p3_tmp <-   p3_glob %>% 
-    add_max_utility_objective(c(count_tar(jj * 35 / (3 * 100)), 
-                                count_tar(jj * 10 / (3 * 100)), 
-                                count_tar(jj * 20 / (3 * 100)), 
-                                100)) %>%
-    add_feature_weights(w1)
-  s3_tmp <- solve(p3_tmp, force=TRUE)
-  # setMinMax(s3_tmp)
-  # plot(category_layer(s3_tmp), main="BII red")
-  fr <- feature_representation(p3_tmp,s3_tmp) 
-  pu<- cellStats(s3_tmp, "sum") 
-  
-  writeRaster(category_layer(s3_tmp), 
-              filename=here("output_trade_off", paste0("P35R10M20_Biod", sprintf("_%03d.tif", jj))), 
-              overwrite=TRUE)
-  
-  if(jj == 1){
-    feat_rep_rel_bio <- data.frame(rbind(c(fr$relative_held)))
-    planning_u_bio <- data.frame(rbind(c(pu)))
-    names(feat_rep_rel_bio) <- paste(fr$feature,"_",fr$zone)
-    names(planning_u_bio)<- c("zone1","zone2","zone3","zone4" )
-  } else {
-    feat_rep_rel_bio[jj,] <- rbind(c(fr$relative_held))
-    planning_u_bio[jj,] <- rbind(c(pu))
-  }
-  plot(category_layer(s3_tmp), main=(paste("Scenario",jj))) 
-  print(paste("End of scenario",jj))
-  rm(p3_tmp,s3_tmp, fr,pu)
-}
-
-feat_rep_rel_bio$scenario<- c(1:(nrow(feat_rep_rel_bio)))
-planning_u_bio$scenario<- c(1:(nrow(planning_u_bio)))
-
-CR_bio_Toff<- full_join(feat_rep_rel_bio,planning_u_bio,by="scenario")
-
-
-write.csv(CR_bio_Toff,"CR_bio_Toff.csv") 
-# ES - Carb
-w1 <- matrix(0, ncol = nlayers(pu1), nrow = nlayers(zn1))                     
-w1[c(2,5,7),] <- 1
-
-for(jj in 1:100){
-  p3_tmp <-   p3_glob %>% 
-    add_max_utility_objective(c(count_tar(jj * 35 / (3 * 100)), 
-                                count_tar(jj * 10 / (3 * 100)), 
-                                count_tar(jj * 20 / (3 * 100)), 
-                                100)) %>%
-    add_feature_weights(w1)
-  s3_tmp <- solve(p3_tmp, force=TRUE)
-  # setMinMax(s3_tmp)
-  # plot(category_layer(s3_tmp), main="BII red")
-  fr <- feature_representation(p3_tmp,s3_tmp) 
-  pu<- cellStats(s3_tmp, "sum") 
-  
-  
-  writeRaster(category_layer(s3_tmp), 
-              filename=here("output_trade_off", paste0("P35R10M20_ES_no_carb", sprintf("_%03d.tif", jj))), 
-              overwrite=TRUE)
-  
-  if(jj == 1){
-    feat_rep_rel_ES <- data.frame(rbind(c(fr$relative_held)))
-    planning_u_ES <- data.frame(rbind(c(pu)))
-    names(feat_rep_rel_ES) <- paste(fr$feature,"_",fr$zone)
-    names(planning_u_ES)<- c("zone1","zone2","zone3","zone4" )
-  } else {
-    feat_rep_rel_ES[jj,] <- rbind(c(fr$relative_held))
-    planning_u_ES[jj,] <- rbind(c(pu))
-  }
-  plot(category_layer(s3_tmp), main=(paste("Scenario",jj))) 
-  print(paste("End of scenario",jj))
-  rm(p3_tmp,s3_tmp, fr,pu)
-}
-
-feat_rep_rel_ES$scenario<- c(1:(nrow(feat_rep_rel_ES)))
-planning_u_ES$scenario<- c(1:(nrow(planning_u_ES)))
-
-CR_ES_car_Toff<- full_join(feat_rep_rel_ES,planning_u_ES,by="scenario")
-
-
-write.csv(CR_ES_car_Toff,"CR_ES_car_Toff.csv") 
-
-# ES
-w1 <- matrix(0, ncol = nlayers(pu1), nrow = nlayers(zn1))                     
-w1[c(2,3,4,5,7),] <- 1
-
-for(jj in 1:100){
-  p3_tmp <-   p3_glob %>% 
-    add_max_utility_objective(c(count_tar(jj * 35 / (3 * 100)), 
-                                count_tar(jj * 10 / (3 * 100)), 
-                                count_tar(jj * 20 / (3 * 100)), 
-                                100)) %>%
-    add_feature_weights(w1)
-  s3_tmp <- solve(p3_tmp, force=TRUE)
-  # setMinMax(s3_tmp)
-  # plot(category_layer(s3_tmp), main="BII red")
-  fr <- feature_representation(p3_tmp,s3_tmp) 
-  pu<- cellStats(s3_tmp, "sum") 
-  
-  writeRaster(category_layer(s3_tmp), 
-              filename=here("output_trade_off", paste0("P35R10M20_ES", sprintf("_%03d.tif", jj))), 
-              overwrite=TRUE)
-  
-  if(jj == 1){
-    feat_rep_rel <- data.frame(rbind(c(fr$relative_held)))
-    planning_u <- data.frame(rbind(c(pu)))
-    names(feat_rep_rel) <- paste(fr$feature,fr$zone)
-    names(planning_u)<- c("zone1","zone2","zone3","zone4" )
-  } else {
-    feat_rep_rel[jj,] <- rbind(c(fr$relative_held))
-    planning_u[jj,] <- rbind(c(pu))
-  }
-  plot(category_layer(s3_tmp), main=(paste("Scenario",jj))) 
-  print(paste("End of scenario",jj))
-  rm(p3_tmp,s3_tmp, fr,pu)
-  
-}
-
-
-feat_rep_rel$scenario<- c(1:(nrow(feat_rep_rel)))
-planning_u$scenario<- c(1:(nrow(feat_rep_rel)))
-
-CR_ES_Toff<- full_join(feat_rep_rel,planning_u,by="scenario")
-
-
-write.csv(CR_ES_Toff,"CR_ES_Toff.csv")
-
-
-# Carbon
-w1 <- matrix(0, ncol = nlayers(pu1), nrow = nlayers(zn1))                     
-w1[c(3,4),] <- 1
-
-for(jj in 1:100){
-  p3_tmp <-   p3_glob %>% 
-    add_max_utility_objective(c(count_tar(jj * 35 / (3 * 100)), 
-                                count_tar(jj * 10 / (3 * 100)), 
-                                count_tar(jj * 20 / (3 * 100)), 
-                                100)) %>%
-    add_feature_weights(w1)
-  s3_tmp <- solve(p3_tmp, force=TRUE)
-  # setMinMax(s3_tmp)
-  # plot(category_layer(s3_tmp), main="BII red")
-  fr <- feature_representation(p3_tmp,s3_tmp) 
-  pu<- cellStats(s3_tmp, "sum") 
-  
-  writeRaster(category_layer(s3_tmp), 
-              filename=here("output_trade_off", paste0("P35R10M20_CAR", sprintf("_%03d.tif", jj))), 
-              overwrite=TRUE)
-  
-  if(jj == 1){
-    feat_rep_rel_car <- data.frame(rbind(c(fr$relative_held)))
-    planning_u_car <- data.frame(rbind(c(pu)))
-    names(feat_rep_rel_car) <- paste(fr$feature,"_",fr$zone)
-    names(planning_u_car)<- c("zone1","zone2","zone3","zone4" )
-  } else {
-    feat_rep_rel_car[jj,] <- rbind(c(fr$relative_held))
-    planning_u_car[jj,] <- rbind(c(pu))
-  }
-  plot(category_layer(s3_tmp), main=(paste("Scenario",jj))) 
-  print(paste("End of scenario",jj))
-  rm(p3_tmp,s3_tmp, fr,pu)
-}
-
-
-feat_rep_rel_car$scenario<- c(1:(nrow( feat_rep_rel_car)))
-planning_u_car$scenario<- c(1:(nrow(planning_u_car)))
-
-CR_car_Toff<- full_join(feat_rep_rel_car,planning_u_car,by="scenario")
-
-
-write.csv(CR_car_Toff,"CR_car_Toff.csv")
 
 #xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx                         
 # Trade-offs
 ## Low bugdet
+#P25R05M65
 #xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx 
 names(zn1)
 w3 <- matrix(0, ncol = nlayers(pu1), nrow = nlayers(zn1)) 
 w3[c(1,5,6,7,9),] <- 1
-w3[2,] <- 10
-
+w3[2,] <- 10 #These weights are meant to make the feat. representation more even
+             #in the global scenario
 p3_glob <- problem(pu1, zones("zone_1" = zn1, "zone_2" = zn2, 
                               "zone_3" = zn3,"zone_4" = zn4,
                               feature_names = names(zn1))) %>%
@@ -843,9 +676,14 @@ feat_rep_rel_bio$scenario<- c(1:(nrow(feat_rep_rel_bio)))
 planning_u_bio$scenario<- c(1:(nrow(planning_u_bio)))
 
 P25R05M10_BiodToff<- full_join(feat_rep_rel_bio,planning_u_bio,by="scenario")
-
+# P25R05M10_BiodToff[,c(10,17,18)]<- P25R05M10_BiodToff[,c(10,17,18)]/2
+# P25R05M10_BiodToff[,c(11:12,14,16)]<- P25R05M10_BiodToff[,c(11:12,14,16)]/1.5
+# P25R05M10_BiodToff[,c(19,20,26,27)]<- P25R05M10_BiodToff[,c(19,20,26,27)]/0.5
+# P25R05M10_BiodToff[,c(21:23)]<-P25R05M10_BiodToff[,c(21:23)]/0.75
 
 write.csv(P25R05M10_BiodToff,"P25R05M10_BiodToff.csv") 
+
+
 
 # ES - Carb
 w1 <- matrix(0, ncol = nlayers(pu1), nrow = nlayers(zn1))                     
@@ -887,7 +725,10 @@ feat_rep_rel_ES$scenario<- c(1:(nrow(feat_rep_rel_ES)))
 planning_u_ES$scenario<- c(1:(nrow(planning_u_ES)))
 
 P25R05M10_ES_no_carbToff<- full_join(feat_rep_rel_ES,planning_u_ES,by="scenario")
-
+# P25R05M10_ES_no_carbToff[,c(10,17,18)]<- P25R05M10_ES_no_carbToff[,c(10,17,18)]/2
+# P25R05M10_ES_no_carbToff[,c(11:12,14,16)]<- P25R05M10_ES_no_carbToff[,c(11:12,14,16)]/1.5
+# P25R05M10_ES_no_carbToff[,c(19,20,26,27)]<- P25R05M10_ES_no_carbToff[,c(19,20,26,27)]/0.5
+# P25R05M10_ES_no_carbToff[,c(21:23)]<-P25R05M10_ES_no_carbToff[,c(21:23)]/0.75
 
 write.csv(P25R05M10_ES_no_carbToff,"P25R05M10_ES_no_carbToff.csv") 
 
@@ -932,9 +773,12 @@ feat_rep_rel$scenario<- c(1:(nrow(feat_rep_rel)))
 planning_u$scenario<- c(1:(nrow(feat_rep_rel)))
 
 P25R05M10_ESToff<- full_join(feat_rep_rel,planning_u,by="scenario")
+# P25R05M10_ESToff[,c(10,17,18)]<- P25R05M10_ESToff[,c(10,17,18)]/2
+# P25R05M10_ESToff[,c(11:12,14,16)]<- P25R05M10_ESToff[,c(11:12,14,16)]/1.5
+# P25R05M10_ESToff[,c(19,20,26,27)]<- P25R05M10_ESToff[,c(19,20,26,27)]/0.5
+# P25R05M10_ESToff[,c(21:23)]<-P25R05M10_ESToff[,c(21:23)]/0.75
 
-
-write.csv(P25R05M10_ESToff,"P25R05M10_ES.csv")
+write.csv(P25R05M10_ESToff,"P25R05M10_ESToff.csv")
 
 
 # Carbon
@@ -977,8 +821,524 @@ feat_rep_rel_car$scenario<- c(1:(nrow( feat_rep_rel_car)))
 planning_u_car$scenario<- c(1:(nrow(planning_u_car)))
 
 P25R05M10_CARToff<- full_join(feat_rep_rel_car,planning_u_car,by="scenario")
+# P25R05M10_CARToff[,c(10,17,18)]<- P25R05M10_CARToff[,c(10,17,18)]/2
+# P25R05M10_CARToff[,c(11:12,14,16)]<- P25R05M10_CARToff[,c(11:12,14,16)]/1.5
+# P25R05M10_CARToff[,c(19,20,26,27)]<- P25R05M10_CARToff[,c(19,20,26,27)]/0.5
+# P25R05M10_CARToff[,c(21:23)]<-P25R05M10_CARToff[,c(21:23)]/0.75
+
+write.csv(P25R05M10_CARToff,"P25R05M10_CARToff.csv")
+
+#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx                         
+# Trade-offs
+## High bugdet
+#P35R10M20
+#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx 
+names(zn1)
+w3 <- matrix(0, ncol = nlayers(pu1), nrow = nlayers(zn1)) 
+w3[c(1,5,6,7,9),] <- 1
+w3[2,] <- 10
+
+p3_glob <- problem(pu1, zones("zone_1" = zn1, "zone_2" = zn2, 
+                              "zone_3" = zn3,"zone_4" = zn4,
+                              feature_names = names(zn1))) %>%
+  add_max_utility_objective(c(count_tar(35), count_tar(10), count_tar(20), count_tar(35))) %>%
+  add_gurobi_solver(gap = 0, threads = n_cores)#%>%
+  #add_feature_weights(w3)
+
+s3_glob <- solve(p3_glob, force=TRUE)
+
+fr3_glob<-feature_representation(p3_glob,s3_glob)
+fr3_glob<-as.data.frame(fr3_glob)
+# setMinMax(s3_glob)
+plot(category_layer(s3_glob), main="global")
+writeRaster(category_layer(s3_glob), filename=here("output_trade_off", "P35R10M20_global.tif"), overwrite=TRUE)
+
+
+# Biod
+w1 <- matrix(0, ncol = nlayers(pu1), nrow = nlayers(zn1))                     
+w1[c(1,8,9),] <- 10
+
+for(jj in 1:100){
+  p3_tmp <-   p3_glob %>% 
+    add_max_utility_objective(c(count_tar(100 * 35 / (3 * 100)), 
+                                count_tar(100 * 10 / (3 * 100)), 
+                                count_tar(100 * 20 / (3 * 100)), 
+                                100)) %>%
+    add_feature_weights(w1)
+  s3_tmp <- solve(p3_tmp, force=TRUE)
+  # setMinMax(s3_tmp)
+  # plot(category_layer(s3_tmp), main="BII red")
+  fr <- feature_representation(p3_tmp,s3_tmp) 
+  pu<- cellStats(s3_tmp, "sum") 
+  
+  writeRaster(category_layer(s3_tmp), 
+              filename=here("output_trade_off", paste0("P35R10M20_Biod", sprintf("_%03d.tif", jj))), 
+              overwrite=TRUE)
+  
+  if(jj == 1){
+    feat_rep_rel_bio <- data.frame(rbind(c(fr$relative_held)))
+    planning_u_bio <- data.frame(rbind(c(pu)))
+    names(feat_rep_rel_bio) <- paste(fr$feature,"_",fr$zone)
+    names(planning_u_bio)<- c("zone1","zone2","zone3","zone4" )
+  } else {
+    feat_rep_rel_bio[jj,] <- rbind(c(fr$relative_held))
+    planning_u_bio[jj,] <- rbind(c(pu))
+  }
+  plot(category_layer(s3_tmp), main=(paste("Scenario",jj))) 
+  print(paste("End of scenario",jj))
+  rm(p3_tmp,s3_tmp, fr,pu)
+}
+
+feat_rep_rel_bio$scenario<- c(1:(nrow(feat_rep_rel_bio)))
+planning_u_bio$scenario<- c(1:(nrow(planning_u_bio)))
+
+CR_bio_Toff<- full_join(feat_rep_rel_bio,planning_u_bio,by="scenario")
+# CR_bio_Toff[,c(10,17,18)]<- CR_bio_Toff[,c(10,17,18)]/2
+# CR_bio_Toff[,c(11:12,14,16)]<- CR_bio_Toff[,c(11:12,14,16)]/1.5
+# CR_bio_Toff[,c(19,20,26,27)]<- CR_bio_Toff[,c(19,20,26,27)]/0.5
+# CR_bio_Toff[,c(21:23)]<-CR_bio_Toff[,c(21:23)]/0.75
+
+write.csv(CR_bio_Toff,"P35R10M20_BiodToff.csv") 
+# ES - Carb
+w1 <- matrix(0, ncol = nlayers(pu1), nrow = nlayers(zn1))                     
+w1[c(2,5,7),] <- 1
+
+for(jj in 1:100){
+  p3_tmp <-   p3_glob %>% 
+    add_max_utility_objective(c(count_tar(jj * 35 / (3 * 100)), 
+                                count_tar(jj * 10 / (3 * 100)), 
+                                count_tar(jj * 20 / (3 * 100)), 
+                                100)) %>%
+    add_feature_weights(w1)
+  s3_tmp <- solve(p3_tmp, force=TRUE)
+  # setMinMax(s3_tmp)
+  # plot(category_layer(s3_tmp), main="BII red")
+  fr <- feature_representation(p3_tmp,s3_tmp) 
+  pu<- cellStats(s3_tmp, "sum") 
+  
+  
+  writeRaster(category_layer(s3_tmp), 
+              filename=here("output_trade_off", paste0("P35R10M20_ES_no_carb", sprintf("_%03d.tif", jj))), 
+              overwrite=TRUE)
+  
+  if(jj == 1){
+    feat_rep_rel_ES <- data.frame(rbind(c(fr$relative_held)))
+    planning_u_ES <- data.frame(rbind(c(pu)))
+    names(feat_rep_rel_ES) <- paste(fr$feature,"_",fr$zone)
+    names(planning_u_ES)<- c("zone1","zone2","zone3","zone4" )
+  } else {
+    feat_rep_rel_ES[jj,] <- rbind(c(fr$relative_held))
+    planning_u_ES[jj,] <- rbind(c(pu))
+  }
+  plot(category_layer(s3_tmp), main=(paste("Scenario",jj))) 
+  print(paste("End of scenario",jj))
+  rm(p3_tmp,s3_tmp, fr,pu)
+}
+
+feat_rep_rel_ES$scenario<- c(1:(nrow(feat_rep_rel_ES)))
+planning_u_ES$scenario<- c(1:(nrow(planning_u_ES)))
+
+CR_ES_car_Toff<- full_join(feat_rep_rel_ES,planning_u_ES,by="scenario")
+# CR_ES_car_Toff[,c(10,17,18)]<- CR_ES_car_Toff[,c(10,17,18)]/2
+# CR_ES_car_Toff[,c(11:12,14,16)]<- CR_ES_car_Toff[,c(11:12,14,16)]/1.5
+# CR_ES_car_Toff[,c(19,20,26,27)]<- CR_ES_car_Toff[,c(19,20,26,27)]/0.5
+# CR_ES_car_Toff[,c(21:23)]<-CR_ES_car_Toff[,c(21:23)]/0.75
+
+write.csv(CR_ES_car_Toff,"P35R10M20_ES_no_carbToff.csv") 
+
+# ES
+w1 <- matrix(0, ncol = nlayers(pu1), nrow = nlayers(zn1))                     
+w1[c(2,3,4,5,7),] <- 1
+
+for(jj in 1:100){
+  p3_tmp <-   p3_glob %>% 
+    add_max_utility_objective(c(count_tar(jj * 35 / (3 * 100)), 
+                                count_tar(jj * 10 / (3 * 100)), 
+                                count_tar(jj * 20 / (3 * 100)), 
+                                100)) %>%
+    add_feature_weights(w1)
+  s3_tmp <- solve(p3_tmp, force=TRUE)
+  # setMinMax(s3_tmp)
+  # plot(category_layer(s3_tmp), main="BII red")
+  fr <- feature_representation(p3_tmp,s3_tmp) 
+  pu<- cellStats(s3_tmp, "sum") 
+  
+  writeRaster(category_layer(s3_tmp), 
+              filename=here("output_trade_off", paste0("P35R10M20_ES", sprintf("_%03d.tif", jj))), 
+              overwrite=TRUE)
+  
+  if(jj == 1){
+    feat_rep_rel <- data.frame(rbind(c(fr$relative_held)))
+    planning_u <- data.frame(rbind(c(pu)))
+    names(feat_rep_rel) <- paste(fr$feature,fr$zone)
+    names(planning_u)<- c("zone1","zone2","zone3","zone4" )
+  } else {
+    feat_rep_rel[jj,] <- rbind(c(fr$relative_held))
+    planning_u[jj,] <- rbind(c(pu))
+  }
+  plot(category_layer(s3_tmp), main=(paste("Scenario",jj))) 
+  print(paste("End of scenario",jj))
+  rm(p3_tmp,s3_tmp, fr,pu)
+  
+}
+
+
+feat_rep_rel$scenario<- c(1:(nrow(feat_rep_rel)))
+planning_u$scenario<- c(1:(nrow(feat_rep_rel)))
+
+CR_ES_Toff<- full_join(feat_rep_rel,planning_u,by="scenario")
+# CR_ES_Toff[,c(10,17,18)]<- CR_ES_Toff[,c(10,17,18)]/2
+# CR_ES_Toff[,c(11:12,14,16)]<- CR_ES_Toff[,c(11:12,14,16)]/1.5
+# CR_ES_Toff[,c(19,20,26,27)]<- CR_ES_Toff[,c(19,20,26,27)]/0.5
+# CR_ES_Toff[,c(21:23)]<-CR_ES_Toff[,c(21:23)]/0.75
+
+write.csv(CR_ES_Toff,"P35R10M20_ESToff.csv")
+
+
+# Carbon
+w1 <- matrix(0, ncol = nlayers(pu1), nrow = nlayers(zn1))                     
+w1[c(3,4),] <- 1
+
+for(jj in 1:100){
+  p3_tmp <-   p3_glob %>% 
+    add_max_utility_objective(c(count_tar(jj * 35 / (3 * 100)), 
+                                count_tar(jj * 10 / (3 * 100)), 
+                                count_tar(jj * 20 / (3 * 100)), 
+                                100)) %>%
+    add_feature_weights(w1)
+  s3_tmp <- solve(p3_tmp, force=TRUE)
+  # setMinMax(s3_tmp)
+  # plot(category_layer(s3_tmp), main="BII red")
+  fr <- feature_representation(p3_tmp,s3_tmp) 
+  pu<- cellStats(s3_tmp, "sum") 
+  
+  writeRaster(category_layer(s3_tmp), 
+              filename=here("output_trade_off", paste0("P35R10M20_CAR", sprintf("_%03d.tif", jj))), 
+              overwrite=TRUE)
+  
+  if(jj == 1){
+    feat_rep_rel_car <- data.frame(rbind(c(fr$relative_held)))
+    planning_u_car <- data.frame(rbind(c(pu)))
+    names(feat_rep_rel_car) <- paste(fr$feature,"_",fr$zone)
+    names(planning_u_car)<- c("zone1","zone2","zone3","zone4" )
+  } else {
+    feat_rep_rel_car[jj,] <- rbind(c(fr$relative_held))
+    planning_u_car[jj,] <- rbind(c(pu))
+  }
+  plot(category_layer(s3_tmp), main=(paste("Scenario",jj))) 
+  print(paste("End of scenario",jj))
+  rm(p3_tmp,s3_tmp, fr,pu)
+}
+
+
+feat_rep_rel_car$scenario<- c(1:(nrow( feat_rep_rel_car)))
+planning_u_car$scenario<- c(1:(nrow(planning_u_car)))
+
+CR_car_Toff<- full_join(feat_rep_rel_car,planning_u_car,by="scenario")
+# CR_car_Toff[,c(10,17,18)]<- CR_car_Toff[,c(10,17,18)]/2
+# CR_car_Toff[,c(11:12,14,16)]<- CR_car_Toff[,c(11:12,14,16)]/1.5
+# CR_car_Toff[,c(19,20,26,27)]<- CR_car_Toff[,c(19,20,26,27)]/0.5
+# CR_car_Toff[,c(21:23)]<-CR_car_Toff[,c(21:23)]/0.75
+
+write.csv(CR_car_Toff,"P35R10M20_CARToff.csv")
+
+#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx                         
+# conventions
+## Low bugdet
+#P25R05M65
+#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx 
+names(zn1)
+
+p3_glob <- problem(pu1, zones("zone_1" = zn1, "zone_2" = zn2, 
+                              "zone_3" = zn3,"zone_4" = zn4,
+                              feature_names = names(zn1))) %>%
+  add_max_utility_objective(c(count_tar(25), count_tar(5), count_tar(10), count_tar(65))) %>%
+  add_gurobi_solver(gap = 0, threads = n_cores)
+
+# s3_glob <- solve(p3_glob, force=TRUE)
+# 
+# fr3_glob<-feature_representation(p3_glob,s3_glob)
+# fr3_glob<-as.data.frame(fr3_glob)
+# plot(category_layer(s3_glob), main="global")
+# writeRaster(category_layer(s3_glob), filename=here("output_trade_off", "P35R10M20_global.tif"), overwrite=TRUE)
+
+
+# Biod
+w1 <- matrix(0, ncol = nlayers(pu1), nrow = nlayers(zn1))                     
+w1[c(1,8,9),] <- 100
+
+p3_tmp <-   p3_glob %>% 
+  add_feature_weights(w1)
+s3_tmp <- solve(p3_tmp, force=TRUE)
+
+fr <- feature_representation(p3_tmp,s3_tmp) 
+pu<- cellStats(s3_tmp, "sum") 
+
+writeRaster(category_layer(s3_tmp), 
+            filename=here("output_convention", paste0("P25R05M10_Biod", sprintf("_%03d.tif", jj))), 
+            overwrite=TRUE)
+
+feat_rep_rel_bio <- data.frame(rbind(c(fr$relative_held)))
+planning_u_bio <- data.frame(rbind(c(pu)))
+names(feat_rep_rel_bio) <- paste(fr$feature,"_",fr$zone)
+names(planning_u_bio)<- c("zone1","zone2","zone3","zone4" )
+plot(category_layer(s3_tmp), main=(paste("Scenario"))) 
+
+feat_rep_rel_bio$scenario<- c(1:(nrow(feat_rep_rel_bio)))
+planning_u_bio$scenario<- c(1:(nrow(planning_u_bio)))
+
+P25R05M10_BiodToff<- full_join(feat_rep_rel_bio,planning_u_bio,by="scenario")
+
+write.csv(P25R05M10_BiodToff,"P25R05M10_BiodToff.csv") 
+
+
+
+# ES - Carb
+w1 <- matrix(0, ncol = nlayers(pu1), nrow = nlayers(zn1))                     
+w1[c(2,5,7),] <- 100
+
+p3_tmp <-   p3_glob %>% 
+  add_feature_weights(w1)
+s3_tmp <- solve(p3_tmp, force=TRUE)
+
+fr <- feature_representation(p3_tmp,s3_tmp) 
+pu<- cellStats(s3_tmp, "sum") 
+
+
+writeRaster(category_layer(s3_tmp), 
+            filename=here("output_convention", "P25R05M10_ES_no_carb_%03d.tif"), 
+            overwrite=TRUE)
+
+feat_rep_rel_ES <- data.frame(rbind(c(fr$relative_held)))
+planning_u_ES <- data.frame(rbind(c(pu)))
+names(feat_rep_rel_ES) <- paste(fr$feature,"_",fr$zone)
+names(planning_u_ES)<- c("zone1","zone2","zone3","zone4" )
+
+plot(category_layer(s3_tmp), main=(paste("Scenario",jj))) 
+
+
+feat_rep_rel_ES$scenario<- c(1:(nrow(feat_rep_rel_ES)))
+planning_u_ES$scenario<- c(1:(nrow(planning_u_ES)))
+
+P25R05M10_ES_no_carbToff<- full_join(feat_rep_rel_ES,planning_u_ES,by="scenario")
+
+
+write.csv(P25R05M10_ES_no_carbToff,"P25R05M10_ES_no_carbToff.csv") 
+
+# ES
+w1 <- matrix(0, ncol = nlayers(pu1), nrow = nlayers(zn1))                     
+w1[c(2,3,4,5,7),] <- 100
+
+p3_tmp <-   p3_glob %>% 
+  add_feature_weights(w1)
+s3_tmp <- solve(p3_tmp, force=TRUE)
+# setMinMax(s3_tmp)
+# plot(category_layer(s3_tmp), main="BII red")
+fr <- feature_representation(p3_tmp,s3_tmp) 
+pu<- cellStats(s3_tmp, "sum") 
+
+writeRaster(category_layer(s3_tmp), 
+            filename=here("output_convention","P25R05M10_ES_%03d.tif"), 
+            overwrite=TRUE)
+
+feat_rep_rel <- data.frame(rbind(c(fr$relative_held)))
+planning_u <- data.frame(rbind(c(pu)))
+names(feat_rep_rel) <- paste(fr$feature,fr$zone)
+names(planning_u)<- c("zone1","zone2","zone3","zone4" )
+plot(category_layer(s3_tmp), main=(paste("Scenario",jj))) 
+
+
+feat_rep_rel$scenario<- c(1:(nrow(feat_rep_rel)))
+planning_u$scenario<- c(1:(nrow(feat_rep_rel)))
+
+P25R05M10_ESToff<- full_join(feat_rep_rel,planning_u,by="scenario")
+
+write.csv(P25R05M10_ESToff,"P25R05M10_ESToff.csv")
+
+
+# Carbon
+w1 <- matrix(0, ncol = nlayers(pu1), nrow = nlayers(zn1))                     
+w1[c(3,4),] <- 100
+
+p3_tmp <-   p3_glob %>% 
+  add_feature_weights(w1)
+s3_tmp <- solve(p3_tmp, force=TRUE)
+# setMinMax(s3_tmp)
+# plot(category_layer(s3_tmp), main="BII red")
+fr <- feature_representation(p3_tmp,s3_tmp) 
+pu<- cellStats(s3_tmp, "sum") 
+
+writeRaster(category_layer(s3_tmp), 
+            filename=here("output_convention", "P25R05M10_CAR_%03d.tif"), 
+            overwrite=TRUE)
+
+feat_rep_rel_car <- data.frame(rbind(c(fr$relative_held)))
+planning_u_car <- data.frame(rbind(c(pu)))
+names(feat_rep_rel_car) <- paste(fr$feature,"_",fr$zone)
+names(planning_u_car)<- c("zone1","zone2","zone3","zone4" )
+
+plot(category_layer(s3_tmp), main=(paste("Scenario",jj))) 
+
+
+
+feat_rep_rel_car$scenario<- c(1:(nrow( feat_rep_rel_car)))
+planning_u_car$scenario<- c(1:(nrow(planning_u_car)))
+
+P25R05M10_CARToff<- full_join(feat_rep_rel_car,planning_u_car,by="scenario")
 
 
 write.csv(P25R05M10_CARToff,"P25R05M10_CARToff.csv")
+
+#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx                         
+# Conventions
+## High bugdet
+#P35R10M20
+#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx 
+names(zn1)
+
+p3_glob <- problem(pu1, zones("zone_1" = zn1, "zone_2" = zn2, 
+                              "zone_3" = zn3,"zone_4" = zn4,
+                              feature_names = names(zn1))) %>%
+  add_max_utility_objective(c(count_tar(35), count_tar(10), count_tar(20), count_tar(35))) %>%
+  add_gurobi_solver(gap = 0, threads = n_cores)
+
+# s3_glob <- solve(p3_glob, force=TRUE)
+# 
+# fr3_glob<-feature_representation(p3_glob,s3_glob)
+# fr3_glob<-as.data.frame(fr3_glob)
+# # setMinMax(s3_glob)
+# plot(category_layer(s3_glob), main="global")
+# writeRaster(category_layer(s3_glob), filename=here("output_trade_off", "P35R10M20_global.tif"), overwrite=TRUE)
+
+
+# Biod
+w1 <- matrix(0, ncol = nlayers(pu1), nrow = nlayers(zn1))                     
+w1[c(1,8,9),] <- 100
+
+
+p3_tmp <-   p3_glob %>% 
+  add_feature_weights(w1)
+s3_tmp <- solve(p3_tmp, force=TRUE)
+# setMinMax(s3_tmp)
+# plot(category_layer(s3_tmp), main="BII red")
+fr <- feature_representation(p3_tmp,s3_tmp) 
+pu<- cellStats(s3_tmp, "sum") 
+
+writeRaster(category_layer(s3_tmp), 
+            filename=here("output_convention", "P35R10M20_Biod_%03d.tif"), 
+            overwrite=TRUE)
+
+
+feat_rep_rel_bio <- data.frame(rbind(c(fr$relative_held)))
+planning_u_bio <- data.frame(rbind(c(pu)))
+names(feat_rep_rel_bio) <- paste(fr$feature,"_",fr$zone)
+names(planning_u_bio)<- c("zone1","zone2","zone3","zone4" )
+
+plot(category_layer(s3_tmp), main=(paste("Scenario",jj))) 
+
+
+feat_rep_rel_bio$scenario<- c(1:(nrow(feat_rep_rel_bio)))
+planning_u_bio$scenario<- c(1:(nrow(planning_u_bio)))
+
+CR_bio_Toff<- full_join(feat_rep_rel_bio,planning_u_bio,by="scenario")
+
+
+write.csv(CR_bio_Toff,"P35R10M20_BiodToff.csv") 
+# ES - Carb
+w1 <- matrix(0, ncol = nlayers(pu1), nrow = nlayers(zn1))                     
+w1[c(2,5,7),] <- 100
+
+p3_tmp <-   p3_glob %>% 
+  add_feature_weights(w1)
+s3_tmp <- solve(p3_tmp, force=TRUE)
+# setMinMax(s3_tmp)
+# plot(category_layer(s3_tmp), main="BII red")
+fr <- feature_representation(p3_tmp,s3_tmp) 
+pu<- cellStats(s3_tmp, "sum") 
+
+
+writeRaster(category_layer(s3_tmp), 
+            filename=here("output_convention", paste0("P35R10M20_ES_no_carb", sprintf("_%03d.tif", jj))), 
+            overwrite=TRUE)
+
+feat_rep_rel_ES <- data.frame(rbind(c(fr$relative_held)))
+planning_u_ES <- data.frame(rbind(c(pu)))
+names(feat_rep_rel_ES) <- paste(fr$feature,"_",fr$zone)
+names(planning_u_ES)<- c("zone1","zone2","zone3","zone4" )
+
+plot(category_layer(s3_tmp), main=(paste("Scenario",jj))) 
+
+feat_rep_rel_ES$scenario<- c(1:(nrow(feat_rep_rel_ES)))
+planning_u_ES$scenario<- c(1:(nrow(planning_u_ES)))
+
+CR_ES_car_Toff<- full_join(feat_rep_rel_ES,planning_u_ES,by="scenario")
+
+
+write.csv(CR_ES_car_Toff,"P35R10M20_ES_no_carbToff.csv") 
+
+# ES
+w1 <- matrix(0, ncol = nlayers(pu1), nrow = nlayers(zn1))                     
+w1[c(2,3,4,5,7),] <- 100
+
+p3_tmp <-   p3_glob %>% 
+  add_feature_weights(w1)
+s3_tmp <- solve(p3_tmp, force=TRUE)
+# setMinMax(s3_tmp)
+# plot(category_layer(s3_tmp), main="BII red")
+fr <- feature_representation(p3_tmp,s3_tmp) 
+pu<- cellStats(s3_tmp, "sum") 
+
+writeRaster(category_layer(s3_tmp), 
+            filename=here("output_convention", paste0("P35R10M20_ES", sprintf("_%03d.tif", jj))), 
+            overwrite=TRUE)
+
+feat_rep_rel <- data.frame(rbind(c(fr$relative_held)))
+planning_u <- data.frame(rbind(c(pu)))
+names(feat_rep_rel) <- paste(fr$feature,fr$zone)
+names(planning_u)<- c("zone1","zone2","zone3","zone4" )
+
+plot(category_layer(s3_tmp), main=(paste("Scenario",jj))) 
+
+feat_rep_rel$scenario<- c(1:(nrow(feat_rep_rel)))
+planning_u$scenario<- c(1:(nrow(feat_rep_rel)))
+
+CR_ES_Toff<- full_join(feat_rep_rel,planning_u,by="scenario")
+
+
+write.csv(CR_ES_Toff,"P35R10M20_ESToff.csv")
+
+
+# Carbon
+w1 <- matrix(0, ncol = nlayers(pu1), nrow = nlayers(zn1))                     
+w1[c(3,4),] <- 100
+
+p3_tmp <-   p3_glob %>% 
+  add_feature_weights(w1)
+s3_tmp <- solve(p3_tmp, force=TRUE)
+# setMinMax(s3_tmp)
+# plot(category_layer(s3_tmp), main="BII red")
+fr <- feature_representation(p3_tmp,s3_tmp) 
+pu<- cellStats(s3_tmp, "sum") 
+
+writeRaster(category_layer(s3_tmp), 
+            filename=here("output_convention", paste0("P35R10M20_CAR", sprintf("_%03d.tif", jj))), 
+            overwrite=TRUE)
+
+feat_rep_rel_car <- data.frame(rbind(c(fr$relative_held)))
+planning_u_car <- data.frame(rbind(c(pu)))
+names(feat_rep_rel_car) <- paste(fr$feature,"_",fr$zone)
+names(planning_u_car)<- c("zone1","zone2","zone3","zone4" )
+
+plot(category_layer(s3_tmp), main=(paste("Scenario",jj))) 
+
+
+feat_rep_rel_car$scenario<- c(1:(nrow( feat_rep_rel_car)))
+planning_u_car$scenario<- c(1:(nrow(planning_u_car)))
+
+CR_car_Toff<- full_join(feat_rep_rel_car,planning_u_car,by="scenario")
+
+
+write.csv(CR_car_Toff,"P35R10M20_CARToff.csv")
+
 
 stopCluster(cl)
